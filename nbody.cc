@@ -5,48 +5,23 @@
 using namespace std;
 
 #define DTime (0.01)
-#define TimeStep (1000)
+#define TimeStep (2)
 //#define NUM (1024)
-//#define NUM (2048)
+#define NUM (2048)
 //#define NUM (4096)
-#define NUM (3)
+//#define NUM (3)
 //#define NUM (512)
-
-
-int swap(int numObj, double r[NUM][3], double v[NUM][3], double m[NUM])
-{
-  // swap により numObj にあるデータは末尾と交換される
-  double tmp;
-  for (int i=0 ; i<3 ; i++) {
-    tmp = r[NUM-1][i];
-    r[NUM-1][i] = r[numObj][i];
-    r[numObj][i] = tmp;
-
-    tmp = v[NUM-1][i];
-    v[NUM-1][i] = v[numObj][i];
-    v[numObj][i] = tmp;
-  }
-  tmp=m[NUM-1];
-  m[NUM-1] = m[numObj];
-  m[numObj] = tmp;
-  return 0;
-}
-
-
 
 int printer(int stage, double r[NUM][3], double v[NUM][3], double m[NUM]) {
   ofstream fout;
   int number=NUM;
-  //int timestep=TimeStep;
   char chr[256];
   char format[256]="../dat/st%08i.bin";
 
-  //sprintf(chr,"./dat/st%08i.bin",stage);
   sprintf(chr,format,stage);
 
   fout.open(chr,ios::out|ios::binary|ios::trunc);
   fout.write((char*) &number, sizeof(int));
-  //fout.write((char*) &timestep, sizeof(int));
   fout.write((char*) &stage, sizeof(int));
 
 
@@ -78,31 +53,44 @@ int printer(int stage, double r[NUM][3], double v[NUM][3], double m[NUM]) {
 
 
 
-int rad(double r[NUM][3], double length[NUM-1])
+int rad(int target, double r[NUM][3], double length[NUM])
 {
-  // 末尾の要素との距離を求め、r^2 を設定する。
-  for (int j=0 ; j<NUM-1 ; j++) {
-    double ret=0, tmp;
-    for (int i=0 ; i<3 ; i++) {
-      ret += (r[j][i]-r[NUM-1][i])*(r[j][i]-r[NUM-1][i]);
+  double ret=0;
+  for (int i=0 ; i<target ; i++) {
+    ret=0;
+    for (int j=0 ; j<3 ; j++) {
+      ret += (r[i][j]-r[target][j])*(r[i][j]-r[target][j]);
     }
-    length[j] = ret;
+    length[i] = ret;
   }
+  for (int i=target+1 ; i<NUM ; i++) {
+    ret=0;
+    for (int j=0 ; j<3 ; j++) {
+      ret += (r[i][j]-r[target][j])*(r[i][j]-r[target][j]);
+    }
+    length[i] = ret;
+  }
+
   return 0;
 }
 
-int force(double f[3], double r[NUM][3], double v[NUM][3], double m[NUM]) {
-  double length[NUM-1];
+int force(int target, double f[3], double r[NUM][3], double v[NUM][3], double m[NUM]) {
+  double length[NUM];
   double soft=1e-1;
   double eps=1e-1;
 
   for (int i=0 ; i<3 ; i++)
     f[i] = 0.0;
-  rad(r,length);
-  for (int i=0 ; i<(NUM-1) ; i++) {
+  rad(target,r,length);
+  for (int i=0 ; i<target ; i++) {
+    for (int j=0 ; j<3 ; j++) {
+      f[j] += (r[i][j]-r[target][j])/(length[i]+soft)/sqrt(length[i]+soft);
+    }
+  }
+  for (int i=target+1 ; i<NUM ; i++) {
     for (int j=0 ; j<3 ; j++) {
       // plummer softenning
-      f[j] += (r[i][j]-r[NUM-1][j])/(length[i]+soft)/sqrt(length[i]+soft);
+      f[j] += (r[i][j]-r[target][j])/(length[i]+soft)/sqrt(length[i]+soft);
       
       /*
       //spline softenning
@@ -147,12 +135,11 @@ int leapfrog(double r[NUM][3], double v[NUM][3], double m[NUM]) {
   double f[3]; //, rtmp[NUM][3], vtmp[NUM][3];
   const double dt=DTime;
 
-  for (i=0 ; i<NUM ; i++) {
-    swap(i,r,v,m);
+
+  for (i=0 ; i<NUM ; i++)
     for (j=0 ; j<3 ; j++)
-      r[NUM-1][j] = r[NUM-1][j] + 0.5*dt*v[NUM-1][j];
-    swap(i,r,v,m);
-  }
+      r[i][j] = r[i][j] + 0.5*dt*v[i][j];
+/*
   for (i=0 ; i<NUM ; i++) {
     swap(i,r,v,m);
     force(f,r,v,m);
@@ -160,12 +147,17 @@ int leapfrog(double r[NUM][3], double v[NUM][3], double m[NUM]) {
       v[NUM-1][j] = v[NUM-1][j] + dt*f[j];
     swap(i,r,v,m);
   }
+*/
   for (i=0 ; i<NUM ; i++) {
-    swap(i,r,v,m);
+    force(i,f,r,v,m);
     for (j=0 ; j<3 ; j++)
-      r[NUM-1][j] = r[NUM-1][j] + 0.5*dt*v[NUM-1][j];
-    swap(i,r,v,m);
+      v[i][j] = v[i][j] + dt*f[j];
   }
+
+  for (i=0 ; i<NUM ; i++)
+    for (j=0 ; j<3 ; j++)
+      r[i][j] = r[i][j] + 0.5*dt*v[i][j];
+
   return 0;
 }
 
@@ -223,6 +215,7 @@ int main(void)
   double r[NUM][3],v[NUM][3],m[NUM];
 
 
+/*
   r[0][0] =  1.0; r[0][1] =  0.0; r[0][2] = 0.0;
   r[1][0] = -1.5; r[1][1] =  0.0; r[1][2] = 0.0;
   r[2][0] =  2.0; r[2][1] =  2.0; r[2][2] = 0.0;
@@ -234,10 +227,10 @@ int main(void)
   m[0] = 1.0;
   m[1] = 1.0;
   m[2] = 1.0;
-
+*/
 
 //#include "init.h"
-//#include "init-twodisk.h"
+#include "init-twodisk.h"
 //#include "init-singledisk.h"
 //  boundary(r,v);
 //  for (int j=0 ; j<NUM ; j++) {
@@ -247,12 +240,12 @@ int main(void)
 
 
 
-  printer(0,r,v,m);
+////  printer(0,r,v,m);
   for (int i=1 ; i<TimeStep ; i++) {
-    printf("%i\n",i);
+////    printf("%i\n",i);
     leapfrog(r,v,m);
 //    boundary(r,v);
-    printer(i,r,v,m);
+////    printer(i,r,v,m);
 //  for (int j=0 ; j<NUM ; j++) {
 //    printf("%i,%i: %e %e, %e %e, %e\n",i,j,r[j][0],r[j][1],v[j][0],v[j][1],m[j]);
 //  }
